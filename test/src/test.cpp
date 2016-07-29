@@ -16,75 +16,66 @@ DigitalOut myled(PA_8);
 
 Serial pc(SERIAL_TX, SERIAL_RX);
 
-int main() {
-    double a=0.05;
+uint8_t rxBuffer[256];
+int len = 0;
 
-    //Enter ready mode
-    irqIn=1;
-    wait_us(200);  //100 min
-    irqIn=0;
-    wait_us(20);   //10 min
-    irqIn=1;
-
-
-    cs=1;//Deselect cs;
-
-
-
-    // Setup the spi for 8 bit data, high steady state clock,
-    // second edge capture, with a 1MHz clock rate
-    spi.format(8,3);
-    spi.frequency(1000000);
-
-
-    uint8_t rxBuffer[256];
-    memset(rxBuffer, 0 , sizeof(rxBuffer)); //Fill with 0
-
-    //write
+void writeIDN(){
     cs=0;               //select chip (active low)
     spi.write(0x00);    //control byte -> write
     spi.write(0x01);    //idn command
     spi.write(0x00);    //size of data sent
     cs=1;               //deselect (needed by datasheet)
+}
+
+void readNFC(){
+    cs=0;
+    spi.write(0x02);                            //control byte -> read
+    rxBuffer[0] = spi.write(0x00);              //read result code
+    if(rxBuffer[0] != 0x55) {                   //result code not echo command
+        len = rxBuffer[1] = spi.write(0x00);    //read length of data
+        for(int i = 0+2; i < len+2; i++) {        
+            rxBuffer[i] = spi.write(0x00);      //read <length> bytes of data
+        }
+        len += 2;                               //length received + resultCode and length bytes
+    } else {
+        len = 1;
+    }
+    cs=1;
+}
+
+
+void printResults(){
+    pc.printf("\nResponse: 0x");
+    for(int i = 0; i <len; i++)     pc.printf("%02X",rxBuffer[i]);
+    pc.printf("\nResult code : 0x%02X",rxBuffer[0]);
+    pc.printf("\nLength of:  Data: 0x%02X (%d)    Total: 0x%02X (%d) \n",rxBuffer[1],rxBuffer[1],len,len);
+    pc.printf("Device ID: 0x");
+    for(int i = 2; i <len-2; i++)   pc.printf("%02X",rxBuffer[i]);
+    pc.printf("\nCRC of ROM: 0x");
+    for(int i = len-2; i <len; i++) pc.printf("%02X",rxBuffer[i]);
+}
+
+int main() {
+    pc.baud(9600);
+    spi.format(8,3);        // Setup the spi for 8 bit data, high steady state clock,
+    spi.frequency(1000000); // second edge capture, with a 1MHz clock rate
+    cs=1;//Deselect cs;
+
+    memset(rxBuffer, 0 , sizeof(rxBuffer)); //Fill rxBuffer with 0
+
+
+    //write
+    writeIDN();
 
     //wait until ready to read
-    do{
-        pc.printf("Ready to read\n");
-
-        //read
-        cs=0;
-        spi.write(0x02);    //control byte -> read
-        rxBuffer[0] = spi.write(0x00);  //result code
-        int len = 0;
-        if(rxBuffer[0] != 0x55) {
-            len = rxBuffer[1] = spi.write(0x00);
-            for(int i = 0; i < len && i < 256; i++) {
-                rxBuffer[i+2] = spi.write(0x00);
-            }
-            len += 2;
-        } else {
-            len = 1;
+    while(1){
+        if(irqOut.read()==0){
+            readNFC();
+            break;
         }
-        cs=1;
-
-        pc.printf("Reponse: 0x");
-        for(int i = 0; i <len && i< 256; i++)
-            pc.printf("%02x",rxBuffer[i]);
-        pc.printf("\nResult code : 0x%02x",rxBuffer[0]);
-        pc.printf("\nLength : 0x%02x (%d) \n",rxBuffer[1],len);
-        pc.printf("Device ID: 0x");
-        for(int i = 2; i <len-2; i++)
-            pc.printf("%02x",rxBuffer[i]);
-        pc.printf("\nCRC of ROM: 0x");
-        for(int i = len-2; i <len; i++)
-            pc.printf("%02x",rxBuffer[i]);
-
-    }while(irqOut.read()!=0);
-
-
-
-
-    while(1) {
-
     }
+
+    printResults();
+
+    while(1) { }
 }
