@@ -10,7 +10,7 @@
 SPI spi(MOSI,MISO,SCK);
 DigitalOut  cs(CS);
 DigitalOut  irqIn(IRQ_IN);   //interrupt to CR95HF
-DigitalIn   irqOut(IRQ_OUT); //interrupt from CR95HF
+InterruptIn irqOut(IRQ_OUT); //interrupt from CR95HF
 
 DigitalOut myled(PA_8);
 
@@ -33,7 +33,7 @@ void readNFC(){
     rxBuffer[0] = spi.write(0x00);              //read result code
     if(rxBuffer[0] != 0x55) {                   //result code not echo command
         len = rxBuffer[1] = spi.write(0x00);    //read length of data
-        for(int i = 0+2; i < len+2; i++) {        
+        for(int i = 0+2; i < len+2; i++) {
             rxBuffer[i] = spi.write(0x00);      //read <length> bytes of data
         }
         len += 2;                               //length received + resultCode and length bytes
@@ -67,13 +67,9 @@ int main() {
     //write
     writeIDN();
 
-    //wait until ready to read
-    while(1){
-        if(irqOut.read()==0){
-            readNFC();
-            break;
-        }
-    }
+    //read when interrupted
+    irqOut.fall(&readNFC);
+    
 
     printResults();
 
