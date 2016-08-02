@@ -24,14 +24,18 @@ uint8_t ANTICOL_CL1_LVL3[] = {0x00,0x04,0x03,0x97,0x20,0x08};
 uint8_t SELECT_CL1_LVL1[]  = {0x00,0x04,0x08,0x93,0x70,0,0,0,0,0,0x28};
 uint8_t SELECT_CL1_LVL2[]  = {0x00,0x04,0x08,0x95,0x70,0,0,0,0,0,0x28};
 uint8_t SELECT_CL1_LVL3[]  = {0x00,0x04,0x08,0x97,0x70,0,0,0,0,0,0x28};
+uint8_t READMEM1[]         = {0x00,0x04,0x03,0x30,0x04, 0x28};
+uint8_t READMEM2[]         = {0x00,0x04,0x03,0x30,0x08, 0x28};
+uint8_t READMEM3[]         = {0x00,0x04,0x03,0x30,0x0C, 0x28};
+uint8_t READMEM4[]         = {0x00,0x04,0x03,0x30,0x0F, 0x28};
 uint8_t UID[10]={0};
-// uint8_t READ_A5[]          = {0x00,0x04,0x03,0x30,0x0C,0x28};
 
 uint8_t bufferLength=0;
 uint8_t bufferCode;
 enum bufferCodes{IDN_BUFF=0,SETPROTOCOL_BUFF,SENDRECEIVE_BUFF,TAGID_BUFF};
 uint8_t IDNBuff[256],setProtocolBuff[256],sendReceiveBuff[256];
 uint8_t *buffer[]={IDNBuff, setProtocolBuff,sendReceiveBuff};
+uint8_t msg[48];
 
 
 
@@ -107,7 +111,7 @@ void printResults(){
 
         default:
             pc.printf("\nResponse: 0X");
-            for(int i = 0; i <bufferLength; i++)     pc.printf("%02X ",buffer[bufferCode][i]);
+            for(int i = 0; i <bufferLength; i++)     pc.printf("%X ",buffer[bufferCode][i]);
             break;
     }
 }
@@ -143,10 +147,26 @@ void activateTag(){
 }
 
 
+void readTag(){
+    memset(msg,0, sizeof(msg[48]));
+    uint8_t msgSize=16; //as per MIFARE ULTRALIGHT definition
+    uint8_t lineOffset=9, msgOffset=2;
+    sendReceive(READMEM1);
+    for(int i =0; i <msgSize-lineOffset; i++) msg[i]=buffer[bufferCode][i+msgOffset+lineOffset];    //Copy first portion of memory
+    sendReceive(READMEM2);
+    for(int i =0; i <msgSize; i++) msg[i+msgSize-lineOffset]=buffer[bufferCode][i+msgOffset];       //Copy second portion of memory
+    sendReceive(READMEM3);
+    for(int i =0; i <msgSize; i++) msg[i+msgSize*2-lineOffset]=buffer[bufferCode][i+msgOffset];     //Copy third portion of memory
+    sendReceive(READMEM4);
+    for(int i =0; i <msgSize; i++) msg[i+msgSize*3-lineOffset]=buffer[bufferCode][i+msgOffset];     //Copy fourth portion of memory
+    uint8_t indexEOF=48;
+    for(int i = sizeof(msg)/sizeof(uint8_t); i >0; i--) if(msg[i]==0xFE) indexEOF=i;                //Find first end of msg
+    for(int i = 0; i <indexEOF; i++) pc.printf("%c",msg[i]);                                        //Print tag message
+}
 
 
 int main() {
-    pc.baud(9600);
+    pc.baud(115200);
     spi.format(8,3);        // Setup the spi for 8 bit data, high steady state clock,
     spi.frequency(1000000); // second edge capture, with a 1MHz clock rate
     cs=1;
@@ -156,15 +176,14 @@ int main() {
 
     irqOut.fall(&readNFC);  //read when interrupted
 
-    // pc.printf("\n\nWriteIDN");
     // writeIDN();
     // printResults();
 
-    // pc.printf("\n\nSetProtocol");
     setProtocol();
-    // printResults();
 
     activateTag();
 
+    pc.printf("\nTag message: ");
+    readTag();
 
 }
